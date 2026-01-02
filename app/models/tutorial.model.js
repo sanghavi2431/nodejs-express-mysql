@@ -1,4 +1,10 @@
-const sql = require("./db.js");
+/**
+ * tutorial.model.js
+ * WRITE  -> Primary DB
+ * READ   -> Read Replica
+ */
+
+const { writeDB, readDB } = require("./db.js");
 
 // constructor
 const Tutorial = function(tutorial) {
@@ -7,123 +13,154 @@ const Tutorial = function(tutorial) {
   this.published = tutorial.published;
 };
 
+/**
+ * CREATE -> WRITE -> PRIMARY DB
+ */
 Tutorial.create = (newTutorial, result) => {
-  sql.query("INSERT INTO tutorials SET ?", newTutorial, (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(err, null);
-      return;
-    }
+  writeDB.query(
+    "INSERT INTO tutorials SET ?",
+    newTutorial,
+    (err, res) => {
+      if (err) {
+        console.log("error (PRIMARY): ", err);
+        result(err, null);
+        return;
+      }
 
-    console.log("created tutorial: ", { id: res.insertId, ...newTutorial });
-    result(null, { id: res.insertId, ...newTutorial });
-  });
+      result(null, { id: res.insertId, ...newTutorial });
+    }
+  );
 };
 
+/**
+ * FIND BY ID -> READ -> READ REPLICA
+ */
 Tutorial.findById = (id, result) => {
-  sql.query(`SELECT * FROM tutorials WHERE id = ${id}`, (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(err, null);
-      return;
-    }
+  readDB.query(
+    "SELECT * FROM tutorials WHERE id = ?",
+    [id],
+    (err, res) => {
+      if (err) {
+        console.log("error (REPLICA): ", err);
+        result(err, null);
+        return;
+      }
 
-    if (res.length) {
-      console.log("found tutorial: ", res[0]);
-      result(null, res[0]);
-      return;
-    }
+      if (res.length) {
+        result(null, res[0]);
+        return;
+      }
 
-    // not found Tutorial with the id
-    result({ kind: "not_found" }, null);
-  });
+      result({ kind: "not_found" }, null);
+    }
+  );
 };
 
+/**
+ * FIND ALL -> READ -> READ REPLICA
+ */
 Tutorial.getAll = (title, result) => {
   let query = "SELECT * FROM tutorials";
+  let params = [];
 
   if (title) {
-    query += ` WHERE title LIKE '%${title}%'`;
+    query += " WHERE title LIKE ?";
+    params.push(`%${title}%`);
   }
 
-  sql.query(query, (err, res) => {
+  readDB.query(query, params, (err, res) => {
     if (err) {
-      console.log("error: ", err);
-      result(null, err);
+      console.log("error (REPLICA): ", err);
+      result(err, null);
       return;
     }
 
-    console.log("tutorials: ", res);
     result(null, res);
   });
 };
 
+/**
+ * FIND ALL PUBLISHED -> READ -> READ REPLICA
+ */
 Tutorial.getAllPublished = result => {
-  sql.query("SELECT * FROM tutorials WHERE published=true", (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
-    }
+  readDB.query(
+    "SELECT * FROM tutorials WHERE published = true",
+    (err, res) => {
+      if (err) {
+        console.log("error (REPLICA): ", err);
+        result(err, null);
+        return;
+      }
 
-    console.log("tutorials: ", res);
-    result(null, res);
-  });
+      result(null, res);
+    }
+  );
 };
 
+/**
+ * UPDATE -> WRITE -> PRIMARY DB
+ */
 Tutorial.updateById = (id, tutorial, result) => {
-  sql.query(
+  writeDB.query(
     "UPDATE tutorials SET title = ?, description = ?, published = ? WHERE id = ?",
     [tutorial.title, tutorial.description, tutorial.published, id],
     (err, res) => {
       if (err) {
-        console.log("error: ", err);
-        result(null, err);
+        console.log("error (PRIMARY): ", err);
+        result(err, null);
         return;
       }
 
-      if (res.affectedRows == 0) {
-        // not found Tutorial with the id
+      if (res.affectedRows === 0) {
         result({ kind: "not_found" }, null);
         return;
       }
 
-      console.log("updated tutorial: ", { id: id, ...tutorial });
       result(null, { id: id, ...tutorial });
     }
   );
 };
 
+/**
+ * DELETE -> WRITE -> PRIMARY DB
+ */
 Tutorial.remove = (id, result) => {
-  sql.query("DELETE FROM tutorials WHERE id = ?", id, (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
-    }
+  writeDB.query(
+    "DELETE FROM tutorials WHERE id = ?",
+    [id],
+    (err, res) => {
+      if (err) {
+        console.log("error (PRIMARY): ", err);
+        result(err, null);
+        return;
+      }
 
-    if (res.affectedRows == 0) {
-      // not found Tutorial with the id
-      result({ kind: "not_found" }, null);
-      return;
-    }
+      if (res.affectedRows === 0) {
+        result({ kind: "not_found" }, null);
+        return;
+      }
 
-    console.log("deleted tutorial with id: ", id);
-    result(null, res);
-  });
+      result(null, res);
+    }
+  );
 };
 
+/**
+ * DELETE ALL -> WRITE -> PRIMARY DB
+ */
 Tutorial.removeAll = result => {
-  sql.query("DELETE FROM tutorials", (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
-    }
+  writeDB.query(
+    "DELETE FROM tutorials",
+    (err, res) => {
+      if (err) {
+        console.log("error (PRIMARY): ", err);
+        result(err, null);
+        return;
+      }
 
-    console.log(`deleted ${res.affectedRows} tutorials`);
-    result(null, res);
-  });
+      result(null, res);
+    }
+  );
 };
 
 module.exports = Tutorial;
